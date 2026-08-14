@@ -10,6 +10,7 @@ const $ = (id) => document.getElementById(id);
 
 let user = null;
 let mode = "login";
+let pendingExchangeBook = null;
 
 const views = {
   home: $("home"),
@@ -60,7 +61,7 @@ function badge(text) {
   return node;
 }
 
-function card(book, own = false, openShelf = false) {
+function card(book, own = false, openShelf = false, allowExchange = false) {
   const node = $("cardTpl").content.cloneNode(true);
   const article = node.querySelector(".book-card");
   const image = node.querySelector("img");
@@ -115,6 +116,15 @@ function card(book, own = false, openShelf = false) {
         event.preventDefault();
         openBookshelf(book.owner_id);
       }
+    };
+  }
+
+  if (allowExchange && book.available_for_exchange && book.owner_id !== user?.id) {
+    const exchangeButton = node.querySelector(".exchange-button");
+    exchangeButton.classList.remove("hidden");
+    exchangeButton.onclick = (event) => {
+      event.stopPropagation();
+      openExchangeDialog(book);
     };
   }
 
@@ -178,7 +188,7 @@ async function openBookshelf(ownerId) {
 
     books.forEach((book) => {
       book.profiles = { nickname: ownerProfile.nickname };
-      container.append(card(book));
+      container.append(card(book, false, false, true));
     });
 
     view("visitorShelf");
@@ -238,10 +248,215 @@ async function myShelf() {
       book.profiles = { nickname: myProfile.nickname };
       container.append(card(book, true));
     });
+
+    await loadExchangeRequests();
   } catch (error) {
     msg(`내 책장 오류: ${error.message}`, true);
   }
 }
+
+function exchangeStatus(status) {
+  return {
+    pending: "대기 중",
+    accepted: "수락됨",
+    rejected: "거절됨",
+  }[status] || status;
+}
+
+function makeRequestCard(request, direction, books, profiles) {
+  const node = document.createElement("article");
+  node.className = "request-card";
+
+  const requested = books.get(String(request.requested_book_id));
+  const offered = books.get(String(request.offered_book_id));
+  const otherId = direction === "received" ? request.requester_id : request.owner_id;
+  const otherName = profiles.get(otherId) || "독자";
+
+  const person = document.createElement("p");
+  person.className = "request-person";
+  person.textContent = direction === "received"
+    ? `${otherName}님의 신청`
+    : `${otherName}님에게 보낸 신청`;
+
+  const trade = document.createElement("p");
+  trade.className = "request-trade";
+  trade.textContent = direction === "received"
+    ? `내 책 「${requested?.title || "삭제된 책"}」 ↔ 「${offered?.title || "삭제된 책"}」`
+    : `「${offered?.title || "삭제된 책"}」 ↔ 상대 책 「${requested?.title || "삭제된 책"}」`;
+
+  const status = document.createElement("span");
+  status.className = `request-status ${request.status}`;
+  status.textContent = exchangeStatus(request.status);
+
+  node.append(person, trade, status);
+
+  if (request.status === "pending") {
+    const actions = document.createElement("div");
+    actions.className = "request-actions";
+
+    if (direction === "received") {
+      const accept = document.createElement("button");
+      accept.type = "button";
+      accept.className = "small-button accept";
+      accept.textContent = "수락";
+      accept.onclick = () => updateExchangeRequest(request.id, "accepted");
+
+      const reject = document.createElement("button");
+      reject.type = "button";
+      reject.className = "small-button reject";
+      reject.textContent = "거절";
+      reject.onclick = () => updateExchangeRequest(request.id, "rejected");
+      actions.append(accept, reject);
+    } else {
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "small-button reject";
+      cancel.textContent = "신청 취소";
+      cancel.onclick = () => cancelExchangeRequest(request.id);
+      actions.append(cancel);
+    }
+
+    node.append(actions);
+  }
+
+  return node;
+}
+
+async function loadExchangeRequests() {
+  if (!user) return;
+
+  const [receivedResult, sentResult] = await Promise.all([
+    db.from("exchange_requests").select("*").eq("owner_id", user.id).order("created_at", { ascending: false }),
+    db.from("exchange_requests").select("*").eq("requester_id", user.id).order("created_at", { ascending: false }),
+  ]);
+
+  if (receivedResult.error) throw receivedResult.error;
+  if (sentResult.error) throw sentResult.error;
+
+  const received = receivedResult.data || [];
+  const sent = sentResult.data || [];
+  const all = [...received, ...sent];
+  const bookIds = [...new Set(all.flatMap((item) => [item.requested_book_id, item.offered_book_id]))];
+  const profileIds = [...new Set(all.flatMap((item) => [item.requester_id, item.owner_id]))];
+  const books = new Map();
+  const profiles = new Map();
+
+  if (bookIds.length) {
+    const { data, error } = await db.from("books").select("id, title").in("id", bookIds);
+    if (error) throw error;
+    data.forEach((book) => books.set(String(book.id), book));
+  }
+
+  if (profileIds.length) {
+    const { data, error } = await db.from("profiles").select("id, nickname").in("id", profileIds);
+    if (error) throw error;
+    data.forEach((item) => profiles.set(item.id, item.nickname));
+  }
+
+  const receivedContainer = $("receivedRequests");
+  const sentContainer = $("sentRequests");
+  receivedContainer.innerHTML = "";
+  sentContainer.innerHTML = "";
+  received.forEach((item) => receivedContainer.append(makeRequestCard(item, "received", books, profiles)));
+  sent.forEach((item) => sentContainer.append(makeRequestCard(item, "sent", books, profiles)));
+  $("receivedEmpty").classList.toggle("hidden", received.length > 0);
+  $("sentEmpty").classList.toggle("hidden", sent.length > 0);
+}
+
+async function updateExchangeRequest(id, status) {
+  const { error } = await db
+    .from("exchange_requests")
+    .update({ status })
+    .eq("id", id)
+    .eq("owner_id", user.id)
+    .eq("status", "pending");
+
+  if (error) return msg(`교환 신청 처리 오류: ${error.message}`, true);
+  msg(status === "accepted" ? "교환 신청을 수락했습니다." : "교환 신청을 거절했습니다.");
+  await loadExchangeRequests();
+}
+
+async function cancelExchangeRequest(id) {
+  if (!confirm("보낸 교환 신청을 취소할까요?")) return;
+  const { error } = await db
+    .from("exchange_requests")
+    .delete()
+    .eq("id", id)
+    .eq("requester_id", user.id)
+    .eq("status", "pending");
+
+  if (error) return msg(`교환 신청 취소 오류: ${error.message}`, true);
+  msg("교환 신청을 취소했습니다.");
+  await loadExchangeRequests();
+}
+
+async function openExchangeDialog(book) {
+  if (!user) {
+    view("auth");
+    authMode("login");
+    msg("로그인 후 교환을 신청할 수 있습니다.", true);
+    return;
+  }
+
+  const { data, error } = await db
+    .from("books")
+    .select("id, title")
+    .eq("owner_id", user.id)
+    .eq("available_for_exchange", true)
+    .order("created_at", { ascending: false });
+
+  if (error) return msg(`내 교환 책 목록 오류: ${error.message}`, true);
+  if (!data.length) {
+    msg("먼저 내 책장에서 교환 가능한 책을 등록해 주세요.", true);
+    return;
+  }
+
+  pendingExchangeBook = book;
+  $("requestedBookTitle").textContent = `「${book.title}」`;
+  const select = $("offeredBookSelect");
+  select.innerHTML = "";
+  data.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = String(item.id);
+    option.textContent = item.title;
+    select.append(option);
+  });
+  $("exchangeDialog").showModal();
+}
+
+$("exchangeForm").onsubmit = async (event) => {
+  event.preventDefault();
+  if (!pendingExchangeBook || !user) return;
+
+  const button = event.submitter;
+  button.disabled = true;
+  button.textContent = "신청 중...";
+
+  const { error } = await db.from("exchange_requests").insert({
+    requester_id: user.id,
+    owner_id: pendingExchangeBook.owner_id,
+    requested_book_id: String(pendingExchangeBook.id),
+    offered_book_id: $("offeredBookSelect").value,
+  });
+
+  button.disabled = false;
+  button.textContent = "신청 보내기";
+
+  if (error) {
+    const duplicate = error.code === "23505";
+    msg(duplicate ? "이미 이 책에 보낸 교환 신청이 있습니다." : `교환 신청 오류: ${error.message}`, true);
+    return;
+  }
+
+  $("exchangeDialog").close();
+  pendingExchangeBook = null;
+  msg("교환 신청을 보냈습니다.");
+};
+
+$("closeExchangeBtn").onclick = () => {
+  $("exchangeDialog").close();
+  pendingExchangeBook = null;
+};
 
 async function delBook(id) {
   if (!confirm("이 책을 삭제할까요?")) return;
