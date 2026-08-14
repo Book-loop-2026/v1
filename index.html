@@ -127,6 +127,20 @@
       <div id="myBooks" class="book-grid"></div>
       <p id="myEmpty" class="empty-message hidden">첫 책을 등록해 책장을 채워보세요.</p>
     </section>
+
+    <section id="visitorShelf" class="hidden">
+      <button id="backToExploreBtn" class="back-button" type="button">← 둘러보기로 돌아가기</button>
+      <div class="visitor-shelf-header">
+        <div>
+          <p class="eyebrow">READER'S BOOKSHELF</p>
+          <h2><span id="visitorShelfName">독자</span>의 책장</h2>
+          <p id="visitorShelfSummary" class="shelf-summary"></p>
+        </div>
+      </div>
+
+      <div id="visitorBooks" class="book-grid"></div>
+      <p id="visitorEmpty" class="empty-message hidden">아직 등록된 책이 없습니다.</p>
+    </section>
   </main>
 
   <template id="cardTpl">
@@ -141,6 +155,7 @@
         <p class="author"></p>
         <p class="comment"></p>
         <div class="badges"></div>
+        <p class="card-hint hidden">책장 구경하기 →</p>
         <button class="delete hidden" type="button">삭제</button>
       </div>
     </article>

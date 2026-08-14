@@ -15,6 +15,7 @@ const views = {
   home: $("home"),
   auth: $("auth"),
   shelf: $("shelf"),
+  visitorShelf: $("visitorShelf"),
 };
 
 function view(name) {
@@ -59,8 +60,9 @@ function badge(text) {
   return node;
 }
 
-function card(book, own = false) {
+function card(book, own = false, openShelf = false) {
   const node = $("cardTpl").content.cloneNode(true);
+  const article = node.querySelector(".book-card");
   const image = node.querySelector("img");
   const placeholder = node.querySelector(".cover span");
 
@@ -92,7 +94,28 @@ function card(book, own = false) {
   if (own) {
     const deleteButton = node.querySelector(".delete");
     deleteButton.classList.remove("hidden");
-    deleteButton.onclick = () => delBook(book.id);
+    deleteButton.onclick = (event) => {
+      event.stopPropagation();
+      delBook(book.id);
+    };
+  }
+
+  if (openShelf && book.owner_id) {
+    article.classList.add("clickable");
+    article.tabIndex = 0;
+    article.setAttribute("role", "button");
+    article.setAttribute(
+      "aria-label",
+      `${book.profiles?.nickname || "이 독자"}의 책장 보기`
+    );
+    node.querySelector(".card-hint").classList.remove("hidden");
+    article.onclick = () => openBookshelf(book.owner_id);
+    article.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openBookshelf(book.owner_id);
+      }
+    };
   }
 
   return node;
@@ -118,7 +141,50 @@ async function publicBooks() {
   }
 
   $("publicEmpty").classList.toggle("hidden", data.length > 0);
-  data.forEach((book) => container.append(card(book)));
+  data.forEach((book) => container.append(card(book, false, true)));
+}
+
+async function openBookshelf(ownerId) {
+  if (user?.id === ownerId) {
+    view("shelf");
+    await myShelf();
+    return;
+  }
+
+  try {
+    const [profileResult, booksResult] = await Promise.all([
+      db.from("profiles").select("id, nickname").eq("id", ownerId).single(),
+      db
+        .from("books")
+        .select(`
+          id, owner_id, title, author, comment, condition, cover_url,
+          available_for_exchange, available_for_sale, sale_price, created_at
+        `)
+        .eq("owner_id", ownerId)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (profileResult.error) throw profileResult.error;
+    if (booksResult.error) throw booksResult.error;
+
+    const ownerProfile = profileResult.data;
+    const books = booksResult.data || [];
+    const container = $("visitorBooks");
+
+    $("visitorShelfName").textContent = ownerProfile.nickname;
+    $("visitorShelfSummary").textContent = `등록한 책 ${books.length}권`;
+    container.innerHTML = "";
+    $("visitorEmpty").classList.toggle("hidden", books.length > 0);
+
+    books.forEach((book) => {
+      book.profiles = { nickname: ownerProfile.nickname };
+      container.append(card(book));
+    });
+
+    view("visitorShelf");
+  } catch (error) {
+    msg(`책장 불러오기 오류: ${error.message}`, true);
+  }
 }
 
 async function profile() {
@@ -374,6 +440,11 @@ $("toggleAuth").onclick = () => {
 };
 
 $("homeBtn").onclick = () => {
+  view("home");
+  publicBooks();
+};
+
+$("backToExploreBtn").onclick = () => {
   view("home");
   publicBooks();
 };
