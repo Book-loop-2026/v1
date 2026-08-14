@@ -1,1 +1,152 @@
-<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book Loop</title><link rel="stylesheet" href="./styles.css"></head><body><header><a class="brand" href="#">Book Loop</a><nav><button id="homeBtn">둘러보기</button><button id="shelfBtn" class="hidden">내 책장</button><button id="authBtn">로그인</button><button id="logoutBtn" class="hidden">로그아웃</button></nav></header><main><div id="status" class="status hidden"></div><section id="home"><div class="hero"><p>BOOKS KEEP MOVING</p><h1>한 사람의 책장에서<br>다음 독자를 만납니다.</h1><button id="heroBtn">내 책장 만들기</button></div><h2>최근 등록된 책</h2><div id="publicBooks" class="grid"></div><p id="publicEmpty" class="hidden">아직 등록된 책이 없습니다.</p></section><section id="auth" class="panel hidden"><h2 id="authTitle">로그인</h2><form id="authForm"><label id="nicknameWrap" class="hidden">닉네임<input id="nickname" maxlength="30"></label><label>이메일<input id="email" type="email" required></label><label>비밀번호<input id="password" type="password" minlength="6" required></label><button id="authSubmit" type="submit">로그인</button></form><button id="toggleAuth" class="link">처음이신가요? 회원가입</button></section><section id="shelf" class="hidden"><div class="row"><h2><span id="shelfName">나</span>의 책장</h2><button id="bookFormBtn">책 등록</button></div><form id="bookForm" class="panel hidden"><label>책 제목<input id="bookTitle" required></label><label>저자<input id="bookAuthor"></label><label>표지 이미지 URL<input id="bookCover" type="url"></label><label>책 상태<select id="bookCondition"><option>매우 좋음</option><option selected>좋음</option><option>보통</option><option>사용감 있음</option></select></label><label>한마디<textarea id="bookComment" rows="4"></textarea></label><label class="inline"><input id="bookExchange" type="checkbox" checked>교환 가능</label><label class="inline"><input id="bookSale" type="checkbox">판매 가능</label><label id="priceWrap" class="hidden">판매 가격<input id="bookPrice" type="number" min="0" step="100"></label><button type="submit">등록하기</button></form><div id="myBooks" class="grid"></div><p id="myEmpty" class="hidden">첫 책을 등록해 주세요.</p></section></main><template id="cardTpl"><article class="card"><div class="cover"><img><span>BOOK</span></div><div class="info"><small class="owner"></small><h3 class="title"></h3><p class="author"></p><p class="comment"></p><div class="badges"></div><button class="delete hidden">삭제</button></div></article></template><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./app.js"></script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Loop</title>
+  <meta name="description" content="책장을 구경하고 책을 교환하는 Book Loop 베타" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#">Book Loop</a>
+    <nav>
+      <button id="homeBtn" class="nav-button">둘러보기</button>
+      <button id="shelfBtn" class="nav-button hidden">내 책장</button>
+      <button id="authBtn" class="nav-button">로그인</button>
+      <button id="logoutBtn" class="nav-button hidden">로그아웃</button>
+    </nav>
+  </header>
+
+  <main class="page-shell">
+    <section id="status" class="status hidden" aria-live="polite"></section>
+
+    <section id="home">
+      <div class="hero">
+        <p class="eyebrow">BOOKS KEEP MOVING</p>
+        <h1>한 사람의 책장에서<br />다음 독자를 만납니다.</h1>
+        <p>좋아했던 이유를 남기고, 책을 교환하며, 서로의 취향을 발견해 보세요.</p>
+        <button id="heroBtn" class="primary-button">내 책장 만들기</button>
+      </div>
+
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">RECENT BOOKS</p>
+          <h2>최근 등록된 책</h2>
+        </div>
+      </div>
+
+      <div id="publicBooks" class="book-grid"></div>
+      <p id="publicEmpty" class="empty-message hidden">아직 등록된 책이 없습니다.</p>
+    </section>
+
+    <section id="auth" class="panel hidden">
+      <p class="eyebrow">WELCOME</p>
+      <h2 id="authTitle">로그인</h2>
+
+      <form id="authForm" class="form-stack">
+        <label id="nicknameWrap" class="hidden">
+          닉네임
+          <input id="nickname" type="text" maxlength="30" placeholder="책장에 표시할 이름" />
+        </label>
+        <label>
+          이메일
+          <input id="email" type="email" required autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <label>
+          비밀번호
+          <input id="password" type="password" required minlength="6" placeholder="6자 이상" />
+        </label>
+        <button id="authSubmit" class="primary-button" type="submit">로그인</button>
+      </form>
+
+      <button id="toggleAuth" class="text-button">처음이신가요? 회원가입</button>
+    </section>
+
+    <section id="shelf" class="hidden">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">MY BOOKSHELF</p>
+          <h2><span id="shelfName">나</span>의 책장</h2>
+        </div>
+        <button id="bookFormBtn" class="primary-button">책 등록</button>
+      </div>
+
+      <form id="bookForm" class="panel form-stack hidden">
+        <h3>새 책 등록</h3>
+        <label>
+          책 제목
+          <input id="bookTitle" required maxlength="120" placeholder="예: 데미안" />
+        </label>
+        <label>
+          저자
+          <input id="bookAuthor" maxlength="100" placeholder="예: 헤르만 헤세" />
+        </label>
+        <label>
+          책 표지 사진
+          <input id="bookCoverFile" type="file" accept="image/jpeg,image/png,image/webp" />
+          <small>JPG, PNG, WEBP 파일을 선택해 주세요. 최대 5MB입니다.</small>
+        </label>
+        <div id="coverPreviewWrap" class="cover-preview hidden">
+          <img id="coverPreview" alt="선택한 책 표지 미리보기" />
+          <button id="removeCoverBtn" class="text-button" type="button">사진 선택 취소</button>
+        </div>
+        <label>
+          책 상태
+          <select id="bookCondition">
+            <option>매우 좋음</option>
+            <option selected>좋음</option>
+            <option>보통</option>
+            <option>사용감 있음</option>
+          </select>
+        </label>
+        <label>
+          이 책에 대한 한마디
+          <textarea id="bookComment" maxlength="500" rows="4" placeholder="왜 좋아했는지 적어보세요."></textarea>
+        </label>
+
+        <div class="choice-row">
+          <label class="check-label">
+            <input id="bookExchange" type="checkbox" checked />
+            교환 가능
+          </label>
+          <label class="check-label">
+            <input id="bookSale" type="checkbox" />
+            판매 가능
+          </label>
+        </div>
+
+        <label id="priceWrap" class="hidden">
+          판매 가격
+          <input id="bookPrice" type="number" min="0" step="100" placeholder="예: 5000" />
+        </label>
+
+        <button class="primary-button" type="submit">등록하기</button>
+      </form>
+
+      <div id="myBooks" class="book-grid"></div>
+      <p id="myEmpty" class="empty-message hidden">첫 책을 등록해 책장을 채워보세요.</p>
+    </section>
+  </main>
+
+  <template id="cardTpl">
+    <article class="book-card">
+      <div class="cover">
+        <img alt="" />
+        <span>BOOK</span>
+      </div>
+      <div class="book-info">
+        <p class="owner"></p>
+        <h3 class="title"></h3>
+        <p class="author"></p>
+        <p class="comment"></p>
+        <div class="badges"></div>
+        <button class="delete hidden" type="button">삭제</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
