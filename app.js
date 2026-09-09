@@ -11,11 +11,13 @@ const $ = (id) => document.getElementById(id);
 let user = null;
 let mode = "login";
 let pendingExchangeBook = null;
+let pendingShippingRequest = null;
 
 const views = {
   home: $("home"),
   auth: $("auth"),
   shelf: $("shelf"),
+  trades: $("trades"),
   visitorShelf: $("visitorShelf"),
 };
 
@@ -39,6 +41,7 @@ function authUI() {
   $("authBtn").classList.toggle("hidden", loggedIn);
   $("logoutBtn").classList.toggle("hidden", !loggedIn);
   $("shelfBtn").classList.toggle("hidden", !loggedIn);
+  $("tradesBtn").classList.toggle("hidden", !loggedIn);
   $("heroBtn").textContent = loggedIn ? "내 책장 보기" : "내 책장 만들기";
 }
 
@@ -87,9 +90,8 @@ function card(book, own = false, openShelf = false, allowExchange = false) {
   if (book.condition) badges.append(badge(book.condition));
   if (book.available_for_exchange) badges.append(badge("교환 가능"));
   if (book.available_for_sale) {
-    badges.append(
-      badge(`판매 ${Number(book.sale_price || 0).toLocaleString("ko-KR")}원`)
-    );
+    const price = Number(book.sale_price || 0);
+    badges.append(badge(price > 0 ? `판매 ${price.toLocaleString("ko-KR")}원` : "무료 나눔"));
   }
 
   if (own) {
@@ -249,7 +251,6 @@ async function myShelf() {
       container.append(card(book, true));
     });
 
-    await loadExchangeRequests();
   } catch (error) {
     msg(`내 책장 오류: ${error.message}`, true);
   }
@@ -263,7 +264,34 @@ function exchangeStatus(status) {
   }[status] || status;
 }
 
-function makeRequestCard(request, direction, books, profiles) {
+function makeShippingBlock(label, detail) {
+  const block = document.createElement("div");
+  block.className = "shipping-block";
+
+  const title = document.createElement("p");
+  title.className = "shipping-label";
+  title.textContent = label;
+  block.append(title);
+
+  if (!detail) {
+    const waiting = document.createElement("p");
+    waiting.className = "shipping-waiting";
+    waiting.textContent = "아직 배송 정보를 입력하지 않았어요.";
+    block.append(waiting);
+    return block;
+  }
+
+  const name = document.createElement("strong");
+  name.textContent = detail.recipient_name;
+  const phone = document.createElement("p");
+  phone.textContent = detail.phone;
+  const address = document.createElement("p");
+  address.textContent = `(${detail.postal_code}) ${detail.address_line1}${detail.address_line2 ? ` ${detail.address_line2}` : ""}`;
+  block.append(name, phone, address);
+  return block;
+}
+
+function makeRequestCard(request, direction, books, profiles, shippingDetails) {
   const node = document.createElement("article");
   node.className = "request-card";
 
@@ -319,6 +347,26 @@ function makeRequestCard(request, direction, books, profiles) {
     node.append(actions);
   }
 
+  if (request.status === "accepted") {
+    const shipping = document.createElement("div");
+    shipping.className = "shipping-details";
+
+    const mine = shippingDetails.get(`${request.id}:${user.id}`);
+    const other = shippingDetails.get(`${request.id}:${otherId}`);
+    shipping.append(
+      makeShippingBlock("내 배송 정보", mine),
+      makeShippingBlock(`${otherName}님의 배송 정보`, other)
+    );
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "small-button shipping-button";
+    edit.textContent = mine ? "내 배송 정보 수정" : "내 배송 정보 입력";
+    edit.onclick = () => openShippingDialog(request, mine);
+    shipping.append(edit);
+    node.append(shipping);
+  }
+
   return node;
 }
 
@@ -340,6 +388,7 @@ async function loadExchangeRequests() {
   const profileIds = [...new Set(all.flatMap((item) => [item.requester_id, item.owner_id]))];
   const books = new Map();
   const profiles = new Map();
+  const shippingDetails = new Map();
 
   if (bookIds.length) {
     const { data, error } = await db.from("books").select("id, title").in("id", bookIds);
@@ -353,15 +402,76 @@ async function loadExchangeRequests() {
     data.forEach((item) => profiles.set(item.id, item.nickname));
   }
 
+  const acceptedIds = all
+    .filter((item) => item.status === "accepted")
+    .map((item) => item.id);
+
+  if (acceptedIds.length) {
+    const { data, error } = await db
+      .from("exchange_shipping_details")
+      .select("request_id, user_id, recipient_name, phone, postal_code, address_line1, address_line2")
+      .in("request_id", acceptedIds);
+    if (error) throw error;
+    data.forEach((item) => shippingDetails.set(`${item.request_id}:${item.user_id}`, item));
+  }
+
   const receivedContainer = $("receivedRequests");
   const sentContainer = $("sentRequests");
   receivedContainer.innerHTML = "";
   sentContainer.innerHTML = "";
-  received.forEach((item) => receivedContainer.append(makeRequestCard(item, "received", books, profiles)));
-  sent.forEach((item) => sentContainer.append(makeRequestCard(item, "sent", books, profiles)));
+  received.forEach((item) => receivedContainer.append(makeRequestCard(item, "received", books, profiles, shippingDetails)));
+  sent.forEach((item) => sentContainer.append(makeRequestCard(item, "sent", books, profiles, shippingDetails)));
   $("receivedEmpty").classList.toggle("hidden", received.length > 0);
   $("sentEmpty").classList.toggle("hidden", sent.length > 0);
 }
+
+async function openShippingDialog(request, detail) {
+  pendingShippingRequest = request;
+  $("shippingName").value = detail?.recipient_name || "";
+  $("shippingPhone").value = detail?.phone || "";
+  $("shippingPostalCode").value = detail?.postal_code || "";
+  $("shippingAddress1").value = detail?.address_line1 || "";
+  $("shippingAddress2").value = detail?.address_line2 || "";
+  $("shippingDialog").showModal();
+}
+
+$("shippingForm").onsubmit = async (event) => {
+  event.preventDefault();
+  if (!pendingShippingRequest || !user) return;
+
+  const button = event.submitter;
+  button.disabled = true;
+  button.textContent = "저장 중...";
+
+  const { error } = await db.from("exchange_shipping_details").upsert({
+    request_id: pendingShippingRequest.id,
+    user_id: user.id,
+    recipient_name: $("shippingName").value.trim(),
+    phone: $("shippingPhone").value.trim(),
+    postal_code: $("shippingPostalCode").value.trim(),
+    address_line1: $("shippingAddress1").value.trim(),
+    address_line2: $("shippingAddress2").value.trim() || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "request_id,user_id" });
+
+  button.disabled = false;
+  button.textContent = "배송 정보 저장";
+
+  if (error) {
+    msg(`배송 정보 저장 오류: ${error.message}`, true);
+    return;
+  }
+
+  $("shippingDialog").close();
+  pendingShippingRequest = null;
+  msg("배송 정보를 저장했습니다.");
+  await loadExchangeRequests();
+};
+
+$("closeShippingBtn").onclick = () => {
+  $("shippingDialog").close();
+  pendingShippingRequest = null;
+};
 
 async function updateExchangeRequest(id, status) {
   const { error } = await db
@@ -451,6 +561,8 @@ $("exchangeForm").onsubmit = async (event) => {
   $("exchangeDialog").close();
   pendingExchangeBook = null;
   msg("교환 신청을 보냈습니다.");
+  view("trades");
+  await loadExchangeRequests();
 };
 
 $("closeExchangeBtn").onclick = () => {
@@ -679,6 +791,15 @@ $("heroBtn").onclick = async () => {
 $("shelfBtn").onclick = async () => {
   view("shelf");
   await myShelf();
+};
+
+$("tradesBtn").onclick = async () => {
+  view("trades");
+  try {
+    await loadExchangeRequests();
+  } catch (error) {
+    msg(`거래함 오류: ${error.message}`, true);
+  }
 };
 
 $("bookFormBtn").onclick = () => {

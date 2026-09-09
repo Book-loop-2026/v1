@@ -13,6 +13,7 @@
     <nav>
       <button id="homeBtn" class="nav-button">둘러보기</button>
       <button id="shelfBtn" class="nav-button hidden">내 책장</button>
+      <button id="tradesBtn" class="nav-button hidden">거래함</button>
       <button id="authBtn" class="nav-button">로그인</button>
       <button id="logoutBtn" class="nav-button hidden">로그아웃</button>
     </nav>
@@ -126,27 +127,28 @@
 
       <div id="myBooks" class="book-grid"></div>
       <p id="myEmpty" class="empty-message hidden">첫 책을 등록해 책장을 채워보세요.</p>
+    </section>
 
-      <section class="requests-section">
-        <div class="section-heading compact-heading">
-          <div>
-            <p class="eyebrow">EXCHANGE REQUESTS</p>
-            <h2>교환 신청 내역</h2>
-          </div>
+    <section id="trades" class="hidden">
+      <div class="section-heading trades-heading">
+        <div>
+          <p class="eyebrow">EXCHANGE BOX</p>
+          <h2>거래함</h2>
+          <p class="section-description">교환 신청을 확인하고, 수락된 거래의 배송 정보를 나눠보세요.</p>
         </div>
-        <div class="request-columns">
-          <div>
-            <h3>받은 신청</h3>
-            <div id="receivedRequests" class="request-list"></div>
-            <p id="receivedEmpty" class="request-empty">받은 신청이 없습니다.</p>
-          </div>
-          <div>
-            <h3>보낸 신청</h3>
-            <div id="sentRequests" class="request-list"></div>
-            <p id="sentEmpty" class="request-empty">보낸 신청이 없습니다.</p>
-          </div>
+      </div>
+      <div class="request-columns">
+        <div>
+          <h3>받은 신청</h3>
+          <div id="receivedRequests" class="request-list"></div>
+          <p id="receivedEmpty" class="request-empty">받은 신청이 없습니다.</p>
         </div>
-      </section>
+        <div>
+          <h3>보낸 신청</h3>
+          <div id="sentRequests" class="request-list"></div>
+          <p id="sentEmpty" class="request-empty">보낸 신청이 없습니다.</p>
+        </div>
+      </div>
     </section>
 
     <section id="visitorShelf" class="hidden">
@@ -180,6 +182,40 @@
       </label>
       <p class="dialog-note">상대방이 신청을 수락하면 교환을 계속 진행할 수 있습니다.</p>
       <button class="primary-button" type="submit">신청 보내기</button>
+    </form>
+  </dialog>
+
+  <dialog id="shippingDialog" class="exchange-dialog shipping-dialog">
+    <form id="shippingForm" class="form-stack">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">DELIVERY</p>
+          <h2>배송 정보 등록</h2>
+        </div>
+        <button id="closeShippingBtn" class="dialog-close" type="button" aria-label="닫기">×</button>
+      </div>
+      <p class="privacy-note">입력한 정보는 이 교환을 수락한 상대방에게만 공개됩니다.</p>
+      <label>
+        받는 사람
+        <input id="shippingName" type="text" required maxlength="50" autocomplete="name" />
+      </label>
+      <label>
+        연락처
+        <input id="shippingPhone" type="tel" required maxlength="30" autocomplete="tel" placeholder="010-0000-0000" />
+      </label>
+      <label>
+        우편번호
+        <input id="shippingPostalCode" type="text" required maxlength="20" autocomplete="postal-code" />
+      </label>
+      <label>
+        주소
+        <input id="shippingAddress1" type="text" required maxlength="200" autocomplete="address-line1" />
+      </label>
+      <label>
+        상세 주소
+        <input id="shippingAddress2" type="text" maxlength="200" autocomplete="address-line2" />
+      </label>
+      <button class="primary-button" type="submit">배송 정보 저장</button>
     </form>
   </dialog>
 
